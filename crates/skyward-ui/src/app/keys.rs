@@ -63,7 +63,7 @@ impl App {
                 let level = self.level(which) + if down { -SLIDER_STEP } else { SLIDER_STEP };
                 self.set_level(&self.theme(), which, rect, level);
                 if which == Slider::Vibration && self.state.vibrate {
-                    return vec![Effect::Haptic];
+                    return vec![Effect::SliderHaptic];
                 }
             }
             return Vec::new();
@@ -497,7 +497,7 @@ mod tests {
         light_on(&mut app, &f, &i, Stop::Hit(Action::Slider(Slider::Vibration)));
         press(&mut app, Key::Power, 0);
         assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("按音量键调节振动强度，按电源键完成"));
-        assert_eq!(press(&mut app, Key::VolumeDown, 0), vec![Effect::Haptic], "each step taps at the strength reached");
+        assert_eq!(press(&mut app, Key::VolumeDown, 0), vec![Effect::SliderHaptic], "each step taps at the strength reached");
         assert_eq!(app.state.vibration, 0.0, "it starts a step from its left end, the lightest");
         for _ in 0..20 {
             press(&mut app, Key::VolumeUp, 0);
@@ -556,7 +556,7 @@ mod tests {
         }
         assert_eq!(app.state.code, "2580");
         light_on(&mut app, &f, &i, Stop::Hit(Action::Type(Cap::Enter)));
-        assert_eq!(press(&mut app, Key::Power, 0), vec![Effect::Unlock { user: 0, code: "2580".into() }]);
+        assert_eq!(press(&mut app, Key::Power, 0), vec![Effect::KeyHaptic, Effect::Unlock { user: 0, code: "2580".into() }]);
     }
 
     #[test]
@@ -573,7 +573,7 @@ mod tests {
         assert!(app.tick(1000 + CHORD_MS).is_empty());
         assert_eq!(app.deadline(1000 + CHORD_MS), Some(1000 + LONG_PRESS_MS), "the press is timed from when it went down");
         assert!(app.tick(1000 + LONG_PRESS_MS - 1).is_empty());
-        assert_eq!(app.tick(1000 + LONG_PRESS_MS), vec![Effect::Haptic], "held long enough, the folder's page opens");
+        assert_eq!(app.tick(1000 + LONG_PRESS_MS), vec![Effect::LongPressHaptic], "held long enough, the folder's page opens");
         assert_eq!(app.screen(), Screen::FileInfo);
         assert_eq!(app.state.file.as_ref().map(|e| e.name.as_str()), Some("vendor"));
         assert!(app.key_up(Key::Power, 1000 + LONG_PRESS_MS + 100).is_empty(), "and the key comes up to nothing");

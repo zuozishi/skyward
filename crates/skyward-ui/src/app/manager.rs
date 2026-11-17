@@ -212,7 +212,7 @@ impl App {
         self.state.asking_delete = false;
         self.open(Screen::FileInfo);
         if self.state.vibrate {
-            vec![Effect::Haptic]
+            vec![Effect::LongPressHaptic]
         } else {
             Vec::new()
         }
@@ -492,7 +492,7 @@ mod tests {
         app.touch(Touch::Down(x, y), &f, 1000);
         assert_eq!(app.deadline(1000), Some(1000 + LONG_PRESS_MS), "the press is timed");
         assert!(app.tick(1000 + LONG_PRESS_MS - 1).is_empty());
-        assert_eq!(app.tick(1000 + LONG_PRESS_MS), vec![Effect::Haptic], "held long enough, it opens with a tap of the motor");
+        assert_eq!(app.tick(1000 + LONG_PRESS_MS), vec![Effect::LongPressHaptic], "held long enough, it opens with a tap of the motor");
         assert_eq!(app.screen(), Screen::FileInfo);
         assert_eq!(app.state.file.as_ref().map(|e| e.name.as_str()), Some("DCIM"));
         assert!(app.touch(Touch::Up, &f, 1500).is_empty(), "lifting does not open the folder as well");

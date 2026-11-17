@@ -5,6 +5,25 @@ use super::*;
 impl App {
     /// Carry out a tapped control.
     pub(super) fn act(&mut self, action: Action, now: u64) -> Vec<Effect> {
+        let key = matches!(action, Action::Type(_) | Action::TermKey(_));
+        let switch = matches!(action, Action::Toggle(_));
+        let selection = matches!(action,
+            Action::Toggle(_) | Action::Theme { .. } | Action::RebootTarget(_)
+            | Action::WipeItem(_) | Action::FlashPartition(_) | Action::FlashSlots(_)
+            | Action::ScreenOff(_) | Action::TimeZone(_) | Action::Language(_)
+            | Action::BackupPart(_) | Action::BackupTo(_) | Action::RestorePart(_)
+            | Action::LogPart(_) | Action::LogsTo(_) | Action::PickSlot(_)
+            | Action::PickSystem(_) | Action::SystemSize(_));
+        let mut effects = self.perform_action(action, now);
+        if selection && self.state.vibrate {
+            effects.insert(0, if switch { Effect::SwitchHaptic } else { Effect::Haptic });
+        } else if key && self.state.vibrate {
+            effects.insert(0, Effect::KeyHaptic);
+        }
+        effects
+    }
+
+    fn perform_action(&mut self, action: Action, now: u64) -> Vec<Effect> {
         let l = self.state.lang;
         match action {
             Action::Open(s) => {

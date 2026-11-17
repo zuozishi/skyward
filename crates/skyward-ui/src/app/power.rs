@@ -155,14 +155,14 @@ mod tests {
     }
 
     #[test]
-    fn the_power_key_turning_the_screen_off_ticks_the_motor_whatever_the_settings() {
+    fn the_power_key_turning_the_screen_off_respects_the_vibration_switch() {
         let mut app = App::new(Screen::Home, W, H, PPD);
         app.tick(0);
         assert_eq!(press(&mut app, Key::Power, 1000), vec![Effect::Ticks]);
         assert!(app.tick(1400).is_empty(), "once");
         app.state.vibrate = false;
         press(&mut app, Key::Power, 2000);
-        assert_eq!(press(&mut app, Key::Power, 3000), vec![Effect::Ticks], "with vibration off too");
+        assert!(press(&mut app, Key::Power, 3000).is_empty(), "with vibration off the motor stays still");
         let mut app = App::new(Screen::Home, W, H, PPD);
         app.tick(0);
         assert!(app.tick(OFF).is_empty(), "but not the screen going off by itself");

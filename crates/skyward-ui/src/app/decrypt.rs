@@ -197,7 +197,7 @@ mod tests {
         tap(&mut app, &f, &i, Action::Type(Cap::Backspace));
         assert_eq!(app.state.code, "123");
         let fx = tap(&mut app, &f, &i, Action::Type(Cap::Enter));
-        assert_eq!(fx, vec![Effect::Unlock { user: 0, code: "123".into() }]);
+        assert_eq!(fx, vec![Effect::KeyHaptic, Effect::Unlock { user: 0, code: "123".into() }]);
         assert_eq!(app.state.code, "", "what was typed is gone once it is sent");
         assert_eq!(app.state.data, Data::Locked { user: 0, keys: Keys::Digits, checking: true });
         assert!(!keys_shown(&mut app, &f, &i), "nothing more is taken while it is checked");
@@ -213,8 +213,26 @@ mod tests {
         let (f, i) = (fonts(), info());
         let mut app = App::new(Screen::Decrypt, W, H, PPD);
         app.data_waiting(Some((0, Keys::Digits)));
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty());
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic]);
         assert_eq!(app.deadline(0), Some(TOAST_MS), "the page says to type one first");
+    }
+
+    #[test]
+    fn letters_digits_and_edit_keys_give_one_brief_tick_and_obey_the_switch() {
+        let (f, i) = (fonts(), info());
+        let mut app = App::new(Screen::Search, W, H, PPD);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('q'))), vec![Effect::KeyHaptic]);
+        assert_eq!(app.state.search, "q");
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Backspace)), vec![Effect::KeyHaptic]);
+        assert_eq!(app.state.search, "");
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Show(Layer::Digits))), vec![Effect::KeyHaptic]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('5'))), vec![Effect::KeyHaptic]);
+        assert_eq!(app.state.search, "5");
+        app.state.vibrate = false;
+        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Char('6'))).is_empty());
+        assert_eq!(app.state.search, "56");
+        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Backspace)).is_empty());
+        assert_eq!(app.state.search, "5");
     }
 
     #[test]

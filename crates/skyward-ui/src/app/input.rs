@@ -114,7 +114,11 @@ impl App {
                     .map(|(_, r)| r);
                 self.drag = match hit {
                     Some((Action::Slider(which), track)) => {
+                        self.slider_feedback = None;
                         self.set_slider(&t, which, track, x);
+                        if which == Slider::Vibration && self.preview_slider(which, now, true) {
+                            fx.push(Effect::SliderHaptic);
+                        }
                         Drag::Slider(which, track)
                     }
                     Some((Action::Confirm(which), track)) if self.on_knob(track, x) => {
@@ -175,13 +179,16 @@ impl App {
                     // A tap of the motor as the `<` appears, as the system
                     // gives.
                     if ready && !armed && self.state.vibrate {
-                        fx.push(Effect::Haptic);
+                        fx.push(Effect::BriefHaptic);
                     }
                     self.drag = Drag::Edge { start, from_left, armed: ready, x, cy };
                     self.dirty = true;
                 }
                 Drag::Slider(which, track) => {
                     self.set_slider(&t, which, track, x);
+                    if self.preview_slider(which, now, false) {
+                        fx.push(Effect::SliderHaptic);
+                    }
                     self.drag = Drag::Slider(which, track);
                 }
                 Drag::Confirm { which, track, grab } => {
@@ -261,7 +268,7 @@ impl App {
                 Drag::Pattern => fx.extend(self.drawn(now)),
                 // Let go, the strength slider taps the motor as strongly as
                 // it was left at.
-                Drag::Slider(Slider::Vibration, _) if self.state.vibrate => fx.push(Effect::Haptic),
+                Drag::Slider(Slider::Vibration, _) if self.preview_slider(Slider::Vibration, now, true) => fx.push(Effect::SliderHaptic),
                 _ => {}
             },
         }
@@ -426,7 +433,7 @@ impl App {
                     None => {
                         self.button = Some((key, Press::Spent));
                         self.sleep(now);
-                        return vec![Effect::Ticks];
+                        return if self.state.vibrate { vec![Effect::Ticks] } else { Vec::new() };
                     }
                 }
                 Vec::new()
@@ -667,7 +674,7 @@ mod tests {
         let ready = app.theme().m.dp(BACK_SWIPE_DP);
         app.touch(Touch::Down(10.0, 1600.0), &f, 0);
         assert!(app.touch(Touch::Move(80.0, 1600.0), &f, 8).is_empty());
-        assert_eq!(app.touch(Touch::Move(20.0 + ready, 1600.0), &f, 16), vec![Effect::Haptic]);
+        assert_eq!(app.touch(Touch::Move(20.0 + ready, 1600.0), &f, 16), vec![Effect::BriefHaptic]);
         assert!(app.touch(Touch::Move(60.0 + ready, 1600.0), &f, 24).is_empty(), "one tap while armed");
         app.touch(Touch::Move(40.0, 1600.0), &f, 32);
         app.touch(Touch::Up, &f, 40);

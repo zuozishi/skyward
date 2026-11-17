@@ -113,17 +113,17 @@ mod tests {
         let (rows, cols) = app.term_size(&f);
         assert!(rows >= 20 && cols >= 40, "a screen of {rows} rows by {cols}");
         app.term_started(rows, cols);
-        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('l'))), vec![Effect::TermInput(b"l".to_vec())]);
-        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::TermInput(b"\r".to_vec())]);
-        assert!(tap(&mut app, &f, &i, Action::TermKey(TermKey::Ctrl)).is_empty());
-        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('c'))), vec![Effect::TermInput(vec![0x03])]);
-        assert_eq!(tap(&mut app, &f, &i, Action::TermKey(TermKey::Up)), vec![Effect::TermInput(b"\x1b[A".to_vec())]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('l'))), vec![Effect::KeyHaptic, Effect::TermInput(b"l".to_vec())]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic, Effect::TermInput(b"\r".to_vec())]);
+        assert_eq!(tap(&mut app, &f, &i, Action::TermKey(TermKey::Ctrl)), vec![Effect::KeyHaptic]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('c'))), vec![Effect::KeyHaptic, Effect::TermInput(vec![0x03])]);
+        assert_eq!(tap(&mut app, &f, &i, Action::TermKey(TermKey::Up)), vec![Effect::KeyHaptic, Effect::TermInput(b"\x1b[A".to_vec())]);
         app.term_output(b"ishtar:/ # ");
         tap_back(&mut app, &f, &i, 0);
         assert!(tap(&mut app, &f, &i, Action::Open(Screen::Terminal)).is_empty(), "the same shell goes on");
         app.term_ended(TermEnd::Exited(0));
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Char('l'))).is_empty(), "nothing runs to take the keys");
-        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::StartShell("/".into())]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Char('l'))), vec![Effect::KeyHaptic], "nothing runs to take the keys");
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic, Effect::StartShell("/".into())]);
     }
 
     #[test]
@@ -137,7 +137,7 @@ mod tests {
         let (rows, cols) = app.term_size(&f);
         app.term_started(rows, cols);
         app.term_ended(TermEnd::Exited(0));
-        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::StartShell("/sdcard/Download".into())], "Enter starts it again there");
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic, Effect::StartShell("/sdcard/Download".into())], "Enter starts it again there");
         app.term_started(rows, cols);
         tap_back(&mut app, &f, &i, 0);
         app.set_files("/data/adb".into(), Ok(Vec::new()), 0);

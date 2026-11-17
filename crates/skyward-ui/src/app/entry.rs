@@ -169,7 +169,7 @@ mod tests {
         }
         type_text(&mut app, &f, &i, "b");
         let rename = Effect::Rename { path: "/sdcard/a.zip".into(), name: "ab".into() };
-        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![rename]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic, rename]);
         app.renamed(Err(RenameRefused::Failed("rename /sdcard/a.zip to ab: No space left on device (os error 28)".into())), 0);
         assert_eq!(app.screen(), Screen::Rename, "a name refused can be typed again");
         app.toast = None;
@@ -360,12 +360,12 @@ mod tests {
         for (name, said) in refused {
             app.state.new_name = name.into();
             app.toast = None;
-            assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty(), "{name:?} is not renamed to");
+            assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic], "{name:?} is not renamed to");
             assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some(said));
             assert_eq!(app.screen(), Screen::Rename);
         }
         app.state.new_name = "a.zip".into();
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty());
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic]);
         assert_eq!(app.screen(), Screen::FileInfo, "the name left as it was, the page goes");
     }
 }

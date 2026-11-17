@@ -418,9 +418,15 @@ pub enum Effect {
     Reboot(Target),
     /// A short tap of the vibration motor.
     Haptic,
-    /// The motor's two quick ticks as the power key turns the screen off,
-    /// as strong as the phone's own system plays them whatever the
-    /// vibration settings say.
+    /// A brief tick for the back gesture threshold.
+    BriefHaptic,
+    /// The keyboard's feedback waveform.
+    KeyHaptic,
+    SwitchHaptic,
+    SliderHaptic,
+    LongPressHaptic,
+    /// The motor's feedback as the power key turns the screen off,
+    /// following the vibration strength preference.
     Ticks,
     /// Save what the panel shows as a picture: into the gallery's
     /// screenshots in the owner's shared storage where `storage` says it is
@@ -1109,6 +1115,9 @@ pub struct App {
     dither: Option<glow::Dither>,
     toast: Option<(String, u64)>,
     drag: Drag,
+    /// Last preview detent and time: continuous motion must not restart
+    /// a motor pulse on every touchscreen sample.
+    slider_feedback: Option<(u8, u64)>,
     tracker: Tracker,
     /// The page gliding on after a flick.
     fling: Option<Fling>,
@@ -1222,6 +1231,7 @@ impl App {
             dither: None,
             toast: None,
             drag: Drag::Idle,
+            slider_feedback: None,
             tracker: Tracker::default(),
             fling: None,
             glide: None,

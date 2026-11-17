@@ -108,7 +108,7 @@ mod tests {
         app.refresh();
         assert!(entry(&mut app));
         assert!(app.act(Action::Open(Screen::Wlan), 0).is_empty(), "a WLAN that is off is not scanned");
-        assert_eq!(tap(&mut app, &f, &i, Action::Toggle(Switch::Wlan)), vec![Effect::Wlan(true)]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Toggle(Switch::Wlan)), vec![Effect::SwitchHaptic, Effect::Wlan(true)]);
         assert_eq!(app.state.wlan.as_ref().unwrap().power, Power::Starting, "the switch moves at once");
         let nearby = vec![network("Skyward", -34, Security::Psk), network("Skyward-Open", -72, Security::Open), network("Skyward-WEP", -60, Security::Wep)];
         app.set_wlan(Wlan { power: Power::On, networks: nearby, joined: None });
@@ -124,14 +124,14 @@ mod tests {
             }
         };
         type_in(&mut app, "secret");
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty());
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic]);
         assert_eq!(toast(&app), Some("请输入 8 到 63 位密码"));
         tap(&mut app, &f, &i, Action::Type(Cap::Show(Layer::Digits)));
         type_in(&mut app, "12");
         let fx = tap(&mut app, &f, &i, Action::Type(Cap::Enter));
         let join = Effect::JoinWlan { ssid: b"Skyward".to_vec(), name: "Skyward".into(), security: Security::Psk, password: Secret("secret12".into()) };
         assert_eq!(format!("{join:?}"), r#"JoinWlan { ssid: [83, 107, 121, 119, 97, 114, 100], name: "Skyward", security: Psk, password: Secret(8 characters) }"#, "what is printed leaves the password out");
-        assert_eq!(fx, vec![join]);
+        assert_eq!(fx, vec![Effect::KeyHaptic, join]);
         assert_eq!(app.screen(), Screen::Wlan, "the WLAN page shows how joining goes");
         assert_eq!((app.state.password.as_str(), app.state.joining.as_ref()), ("", None), "the password is not kept");
         app.set_wlan(connected("Skyward"));
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(app.screen(), Screen::WlanNetwork);
         assert_eq!(tap(&mut app, &f, &i, Action::LeaveNetwork), vec![Effect::LeaveWlan]);
         assert_eq!(app.screen(), Screen::Wlan);
-        assert_eq!(tap(&mut app, &f, &i, Action::Toggle(Switch::Wlan)), vec![Effect::Wlan(false)]);
+        assert_eq!(tap(&mut app, &f, &i, Action::Toggle(Switch::Wlan)), vec![Effect::SwitchHaptic, Effect::Wlan(false)]);
         assert_eq!(app.state.wlan, Some(Wlan::default()));
     }
 
@@ -194,7 +194,7 @@ mod tests {
                 tap(app, &f, &i, Action::Type(Cap::Char(ch)));
             }
         };
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty());
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic]);
         assert_eq!(toast(&app), Some("请输入网络名称"));
         type_in(&mut app, "skyward");
         let frame = app.frame(&f, &i);
@@ -222,14 +222,14 @@ mod tests {
         type_in(&mut app, "secret");
         tap(&mut app, &f, &i, Action::TypeInto(Field::Name));
         assert_eq!((app.state.adding.as_ref().unwrap().name.as_str(), app.state.password.as_str()), ("skyward", "secret"));
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty());
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic]);
         assert_eq!(toast(&app), Some("请输入 8 到 63 位密码"));
         assert_eq!(app.state.adding.as_ref().unwrap().field, Field::Password, "the keyboard types into the field turned down");
         tap(&mut app, &f, &i, Action::Type(Cap::Show(Layer::Digits)));
         type_in(&mut app, "12");
         let fx = tap(&mut app, &f, &i, Action::Type(Cap::Enter));
         let join = Effect::JoinWlan { ssid: b"skyward".to_vec(), name: "skyward".into(), security: Security::Psk, password: Secret("secret12".into()) };
-        assert_eq!(fx, vec![join]);
+        assert_eq!(fx, vec![Effect::KeyHaptic, join]);
         assert_eq!(app.screen(), Screen::Wlan, "the WLAN page shows how joining goes");
         assert_eq!((app.state.adding.as_ref(), app.state.password.as_str()), (None, ""), "nothing typed is kept");
     }
@@ -251,12 +251,12 @@ mod tests {
         for _ in 0..33 {
             tap(&mut app, &f, &i, Action::Type(Cap::Char('a')));
         }
-        assert!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)).is_empty());
+        assert_eq!(tap(&mut app, &f, &i, Action::Type(Cap::Enter)), vec![Effect::KeyHaptic]);
         assert_eq!(toast(&app), Some("网络名称不能超过 32 个字符"));
         tap(&mut app, &f, &i, Action::Type(Cap::Backspace));
         let fx = tap(&mut app, &f, &i, Action::Type(Cap::Enter));
         let name = "a".repeat(32);
-        assert_eq!(fx, vec![Effect::JoinWlan { ssid: name.clone().into_bytes(), name, security: Security::Open, password: Secret::default() }]);
+        assert_eq!(fx, vec![Effect::KeyHaptic, Effect::JoinWlan { ssid: name.clone().into_bytes(), name, security: Security::Open, password: Secret::default() }]);
     }
 
     #[test]

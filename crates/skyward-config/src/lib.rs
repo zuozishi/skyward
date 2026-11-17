@@ -211,10 +211,39 @@ pub struct Haptics {
     /// driver plays the waveforms it keeps.
     #[serde(default)]
     pub click: Option<i16>,
+    /// Cirrus RAM indices belong to a particular firmware wavetable.
+    #[serde(default)]
+    pub cirrus_ram: Option<CirrusRam>,
     /// The file the driver says the motor's resonant frequency in, in
     /// tenths of a hertz whatever its label.
     pub resonance: String,
     pub strength: Strength,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CirrusRam {
+    pub firmware: String,
+    pub click: CirrusWaveform,
+    pub key: CirrusWaveform,
+    pub back: CirrusWaveform,
+    pub screen_off: CirrusWaveform,
+    pub switch: CirrusWaveform,
+    pub slider: CirrusWaveform,
+    pub long_press: CirrusWaveform,
+}
+
+/// A finite RAM waveform's index and length from the matching wavetable.
+/// Cirrus stores its length in samples at 8 kHz, including composite waves.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct CirrusWaveform {
+    pub index: u16,
+    pub samples: u32,
+}
+
+impl CirrusRam {
+    pub fn waveforms(&self) -> [CirrusWaveform; 7] {
+        [self.click, self.key, self.back, self.screen_off, self.switch, self.slider, self.long_press]
+    }
 }
 
 /// How strongly the click plays, each as a share of the most its waveform
@@ -258,6 +287,9 @@ pub struct Names {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Device {
+    /// Disable optional vibration initialization where no supported motor is available.
+    #[serde(default)]
+    pub supports_vibration: Option<bool>,
     pub codename: String,
     #[serde(default)]
     pub brand: String,
@@ -539,6 +571,13 @@ impl DeviceConfig {
             ensure!(plain && !folder.is_empty(), "[backup] data_skipped: {folder} is not a path from the top of {DATA}");
         }
         if let Some(haptics) = &cfg.haptics {
+            if let Some(ram) = &haptics.cirrus_ram {
+                ensure!(!ram.firmware.trim().is_empty(), "[haptics] cirrus_ram needs a firmware version");
+                for wave in ram.waveforms() {
+                    ensure!(wave.index < 128, "[haptics] cirrus_ram indices must be below 128");
+                    ensure!((1..=8000).contains(&wave.samples), "[haptics] cirrus_ram requires a finite waveform of at most one second");
+                }
+            }
             let file = &haptics.resonance;
             ensure!(Path::new(file).is_absolute(), "[haptics] resonance: {file} is not an absolute path");
             let Strength { lightest, strongest } = haptics.strength;
@@ -607,6 +646,39 @@ impl DeviceConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cirrus_ram_requires_finite_waveforms_and_a_firmware() {
+        let original = include_str!("../../../devices/popsicle.toml");
+        let ram = DeviceConfig::parse(original).unwrap().haptics.unwrap().cirrus_ram.unwrap();
+        assert_eq!(ram.firmware, "42.0.26");
+        assert_eq!(ram.waveforms().map(|w| (w.index, w.samples)),
+            [(3, 121), (7, 107), (0, 92), (37, 516), (9, 92), (5, 78), (0, 92)]);
+        for change in [
+            original.replace("firmware = \"42.0.26\"", "firmware = \" \""),
+            original.replace("index = 7", "index = 128"),
+            original.replace("index = 37", "index = -1"),
+            original.replace("samples = 107", "samples = 0"),
+            original.replace("samples = 516", "samples = 8001"),
+            original.replace("key = { index = 7, samples = 107 }", ""),
+        ] {
+            assert!(DeviceConfig::parse(&change).is_err());
+        }
+    }
+
+    #[test]
+    fn popsicle_uses_its_matching_stock_and_cirrus_profile() {
+        let cfg = DeviceConfig::parse(include_str!("../../../devices/popsicle.toml")).unwrap();
+        assert_eq!(cfg.device.supports_vibration, Some(true));
+        assert!(cfg.modules.load.iter().any(|module| module == "cs40l26-i2c"));
+        assert!(cfg.modules.load.iter().any(|module| module == "nxp-nci"));
+        assert_eq!(cfg.stock.as_ref().unwrap().version, "OS4.0.6.0.XPBCNXM");
+        assert_eq!(cfg.owners[0].paths, ["/dev/nq-nci"]);
+        assert_eq!(cfg.owners[0].mode, 0o660);
+        assert_eq!(cfg.services.len(), 2, "key services are discovered by main");
+        assert!(cfg.services[0].oneshot);
+    }
+
 
     #[test]
     fn the_commands_sit_beside_the_recovery_service_binary() {
@@ -779,7 +851,7 @@ mod tests {
             (include_str!("../../../devices/ishtar.toml"), "OS3.0.308.0.WMACNXM"),
             (include_str!("../../../devices/pudding.toml"), "OS4.0.4.0.XPCCNXM"),
             (include_str!("../../../devices/pandora.toml"), "OS4.0.4.0.XBLCNXM"),
-            (include_str!("../../../devices/popsicle.toml"), "OS4.0.4.0.XPBCNXM"),
+            (include_str!("../../../devices/popsicle.toml"), "OS4.0.6.0.XPBCNXM"),
             (include_str!("../../../devices/myron.toml"), "OS4.0.4.0.XPMCNXM"),
             (include_str!("../../../devices/songyuan.toml"), "OS4.0.4.0.XGNCNXM"),
             (include_str!("../../../devices/athens.toml"), "OS4.0.4.0.XPICNXM"),

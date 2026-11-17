@@ -51,6 +51,19 @@ pub const TIME_ZONES: [(Text, Text, &str); 9] = [
 ];
 
 impl App {
+    pub(super) fn preview_slider(&mut self, which: Slider, now: u64, released: bool) -> bool {
+        let detent = (self.level(which) * 10.0).round() as u8;
+        let changed = self.slider_feedback.is_none_or(|(last, at)| {
+            last != detent && (released || now.saturating_sub(at) >= 110)
+        });
+        if self.state.vibrate && changed {
+            self.slider_feedback = Some((detent, now));
+            true
+        } else {
+            false
+        }
+    }
+
     pub(super) fn set_slider(&mut self, t: &Theme, which: Slider, track: Rect, x: f32) {
         self.set_level(t, which, track, (x - track.x) / track.w);
     }
@@ -95,9 +108,9 @@ mod tests {
         if y > H as f32 * 0.9 {
             scroll_to(&mut app, &f, y - H as f32 * 0.8, 0);
         }
-        assert_eq!(tap_at(&mut app, &f, &i, Action::Toggle(Switch::FileTransfer), 2000), [Effect::FileTransfer(false)]);
+        assert_eq!(tap_at(&mut app, &f, &i, Action::Toggle(Switch::FileTransfer), 2000), [Effect::SwitchHaptic, Effect::FileTransfer(false)]);
         assert!(!app.state.file_transfer);
-        assert_eq!(tap_at(&mut app, &f, &i, Action::Toggle(Switch::FileTransfer), 3000), [Effect::FileTransfer(true)]);
+        assert_eq!(tap_at(&mut app, &f, &i, Action::Toggle(Switch::FileTransfer), 3000), [Effect::SwitchHaptic, Effect::FileTransfer(true)]);
         app.file_transfer_failed(false, "无法开启文件传输", 4000);
         assert!(!app.state.file_transfer, "the switch shows how it stands");
     }
@@ -121,26 +134,33 @@ mod tests {
         let y = track.centre().1 - app.top().1;
         assert!(app.touch(Touch::Down(track.x + track.w * 0.25, y), &f, 0).is_empty());
         assert_eq!(app.panel(0), Some(0.25));
-        assert!(app.touch(Touch::Move(track.x + track.w * 0.75, y + 40.0), &f, 0).is_empty());
+        assert_eq!(app.touch(Touch::Move(track.x + track.w * 0.75, y + 40.0), &f, 0), vec![Effect::SliderHaptic]);
         assert_eq!(app.panel(0), Some(0.75));
         assert!(app.touch(Touch::Up, &f, 0).is_empty(), "the panel shows the brightness");
         assert_eq!(app.state.brightness, 0.75);
     }
 
     #[test]
-    fn the_strength_slider_taps_the_motor_as_strongly_as_it_is_let_go() {
+    fn the_strength_slider_previews_detents_without_restarting_each_sample() {
         let (f, i) = (fonts(), info());
         let mut app = App::new(Screen::Settings, W, H, PPD);
         let track = app.frame(&f, &i).hits.iter().find(|h| h.action == Action::Slider(Slider::Vibration)).unwrap().rect;
         let y = track.centre().1 - app.top().1;
-        assert!(app.touch(Touch::Down(track.x + track.w * 0.25, y), &f, 0).is_empty());
-        assert!(app.touch(Touch::Move(track.x + track.w * 0.8, y + 40.0), &f, 0).is_empty(), "nothing taps while the finger moves");
-        assert_eq!(app.touch(Touch::Up, &f, 0), vec![Effect::Haptic], "let go, the motor taps");
-        assert!((app.state.vibration - 0.8).abs() < 1e-5);
+        assert_eq!(app.touch(Touch::Down(track.x + track.w * 0.25, y), &f, 0), vec![Effect::SliderHaptic]);
+        assert!(app.touch(Touch::Move(track.x + track.w * 0.4, y), &f, 20).is_empty(), "a pulse gets time to finish");
+        assert_eq!(app.touch(Touch::Move(track.x + track.w * 0.8, y + 40.0), &f, 120), vec![Effect::SliderHaptic]);
+        assert!(app.touch(Touch::Move(track.x + track.w * 0.81, y), &f, 190).is_empty(), "the same detent does not repeat");
+        assert!(app.touch(Touch::Move(track.x + track.w * 0.95, y), &f, 200).is_empty());
+        assert_eq!(app.touch(Touch::Up, &f, 210), vec![Effect::SliderHaptic], "release previews a final detent skipped by the rate limit");
+        assert!((app.state.vibration - 0.95).abs() < 1e-5);
+        app.touch(Touch::Down(track.x + track.w * 0.5, y), &f, 400);
+        assert!(app.touch(Touch::Up, &f, 410).is_empty(), "release does not duplicate the preview");
         assert!(app.touch(Touch::Down(track.x - 50.0, y), &f, 0).is_empty());
         assert!(app.touch(Touch::Up, &f, 0).is_empty(), "touched beside the track, the slider stays");
         app.state.vibrate = false;
-        app.touch(Touch::Down(track.x, y), &f, 0);
+        assert!(app.touch(Touch::Down(track.x, y), &f, 500).is_empty());
+        assert!(app.touch(Touch::Move(track.x + track.w * 0.5, y), &f, 700).is_empty());
+        app.touch(Touch::Move(track.x, y), &f, 800);
         assert!(app.touch(Touch::Up, &f, 0).is_empty(), "with touch vibration off, the motor stays still");
         assert_eq!(app.state.vibration, 0.0, "the strength still moves, down to the slider's left end");
     }
@@ -268,5 +288,18 @@ mod tests {
         assert_eq!(app.deadline(1000), Some(12_000));
         app.tick(15_000);
         assert!(!app.display_on());
+    }
+
+    #[test]
+    fn settings_selections_respect_vibration_and_preserve_runtime_effects() {
+        let mut app = App::new(Screen::Settings, W, H, PPD);
+        assert_eq!(app.act(Action::Toggle(Switch::Vibrate), 0), vec![]);
+        assert!(!app.state.vibrate);
+        assert_eq!(app.act(Action::Theme { dark: true }, 100), vec![]);
+        assert_eq!(app.act(Action::Toggle(Switch::FileTransfer), 200), vec![Effect::FileTransfer(false)]);
+        assert_eq!(app.act(Action::Toggle(Switch::Vibrate), 300), vec![Effect::SwitchHaptic]);
+        assert_eq!(app.act(Action::Theme { dark: false }, 400), vec![Effect::Haptic]);
+        assert_eq!(app.act(Action::Toggle(Switch::FileTransfer), 500), vec![Effect::SwitchHaptic, Effect::FileTransfer(true)]);
+        assert_eq!(app.act(Action::ScreenOff(1), 600), vec![Effect::Haptic]);
     }
 }

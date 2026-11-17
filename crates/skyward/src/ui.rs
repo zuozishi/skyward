@@ -1255,7 +1255,15 @@ impl<'a> Pages<'a> {
         let inputs = Inputs::open(w, h, cfg.touch.writes.clone())?;
         let started = Instant::now();
         let control = Control::open()?;
-        let haptics = cfg.haptics.as_ref().map(Haptics::open).transpose()?;
+        let haptics = cfg.haptics.as_ref()
+            .filter(|_| cfg.device.supports_vibration != Some(false))
+            .and_then(|config| match Haptics::open(config) {
+                Ok(haptics) => Some(haptics),
+                Err(error) => {
+                    eprintln!("haptics disabled: {error:#}");
+                    None
+                }
+            });
         let backlight = Backlight::open()?;
         let first = match &request.work {
             Work::Fastboot => Screen::Fastboot,
@@ -1616,10 +1624,11 @@ impl<'a> Pages<'a> {
     fn tick(&mut self, now: u64) -> Result<()> {
         for fx in self.app.tick(now) {
             match fx {
-                Effect::Haptic => self.click()?,
+                effect @ (Effect::Haptic | Effect::BriefHaptic | Effect::KeyHaptic
+                | Effect::SwitchHaptic | Effect::SliderHaptic | Effect::LongPressHaptic) => self.feedback(effect),
                 // The power key held past its wait for volume down turns
                 // the screen off.
-                Effect::Ticks => self.ticks()?,
+                Effect::Ticks => self.feedback(Effect::Ticks),
                 other => unreachable!("time passing asks for nothing but the motor, not {other:?}"),
             }
         }
@@ -1631,20 +1640,25 @@ impl<'a> Pages<'a> {
         Ok(())
     }
 
-    /// One click of the motor, as strong as the settings say.
-    fn click(&mut self) -> Result<()> {
-        if let Some(h) = &mut self.haptics {
-            h.click(self.app.state.vibration)?;
+    /// Optional feedback must never stop recovery's pages.
+    fn feedback(&mut self, effect: Effect) {
+        let position = self.app.state.vibration;
+        let result = match self.haptics.as_mut() {
+            Some(haptics) => match effect {
+                Effect::Ticks => haptics.ticks(position),
+                Effect::BriefHaptic => haptics.brief(position),
+                Effect::KeyHaptic => haptics.key(position),
+                Effect::SwitchHaptic => haptics.switch(position),
+                Effect::SliderHaptic => haptics.slider(position),
+                Effect::LongPressHaptic => haptics.long_press(position),
+                _ => haptics.click(position),
+            },
+            None => return,
+        };
+        if let Err(error) = result {
+            eprintln!("haptics disabled after playback failure: {error:#}");
+            self.haptics = None;
         }
-        Ok(())
-    }
-
-    /// The motor's ticks of the screen going off.
-    fn ticks(&mut self) -> Result<()> {
-        if let Some(h) = &mut self.haptics {
-            h.ticks()?;
-        }
-        Ok(())
     }
 
     /// Take in the readings taken since the last turn.
@@ -2496,8 +2510,9 @@ impl Pages<'_> {
                 }
             }
             Effect::ShellTo(folder) => self.shell_to(&folder, now)?,
-            Effect::Haptic => self.click()?,
-            Effect::Ticks => self.ticks()?,
+            effect @ (Effect::Haptic | Effect::BriefHaptic | Effect::KeyHaptic
+                | Effect::SwitchHaptic | Effect::SliderHaptic | Effect::LongPressHaptic) => self.feedback(effect),
+            Effect::Ticks => self.feedback(Effect::Ticks),
             // The panel shows the last frame drawn, which is what is
             // saved; one that cannot be is the page's to report.
             Effect::Screenshot { storage } => {
